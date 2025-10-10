@@ -2,6 +2,7 @@ package algorithm
 
 import (
 	"context"
+	"fmt"
 	"time"
 )
 
@@ -86,4 +87,107 @@ type State struct {
 	// Algorithm identifies which algorithm produced this state
 	// ("token_bucket", "fixed_window", "sliding_window", "leaky_bucket")
 	Algorithm string
+}
+
+// Config holds configuration for algorithm initialization.
+//
+// Different algorithms use different fields. Common fields:
+//   - Rate: requests per window
+//   - Window: time window duration
+//   - BurstSize: maximum burst capacity (Token Bucket only)
+type Config struct {
+	// Rate is the number of requests allowed per window
+	Rate int64
+
+	// Window is the time period for the rate limit
+	Window time.Duration
+
+	// BurstSize is the maximum burst capacity (Token Bucket specific)
+	// If 0, defaults to Rate (no extra burst capacity)
+	BurstSize int64
+
+	// Algorithm specifies which algorithm to use
+	Algorithm string
+}
+
+// Validate checks if the config is valid.
+func (c *Config) Validate() error {
+	if c.Rate <= 0 {
+		return &ConfigError{
+			Field:  "rate",
+			Value:  c.Rate,
+			Reason: "must be positive",
+		}
+	}
+
+	if c.Window <= 0 {
+		return &ConfigError{
+			Field:  "window",
+			Value:  c.Window,
+			Reason: "must be positive",
+		}
+	}
+
+	if c.BurstSize < 0 {
+		return &ConfigError{
+			Field:  "burst_size",
+			Value:  c.BurstSize,
+			Reason: "cannot be negative",
+		}
+	}
+
+	return nil
+}
+
+// ConfigError represents a configuration error.
+type ConfigError struct {
+	Field  string
+	Value  interface{}
+	Reason string
+}
+
+// Error implements the error interface.
+func (e *ConfigError) Error() string {
+	return fmt.Sprintf("algorithm config error: %s = %v (%s)",
+		e.Field, e.Value, e.Reason)
+}
+
+// AlgorithmType represents the available algorithm types.
+type AlgorithmType string
+
+const (
+	// TokenBucket allows bursts and has smooth token refills.
+	// Best for: User-facing APIs, general rate limiting
+	TokenBucket AlgorithmType = "token_bucket"
+
+	// FixedWindow divides time into fixed intervals.
+	// Best for: Billing, quotas, simple rate limiting
+	FixedWindow AlgorithmType = "fixed_window"
+
+	// SlidingWindow tracks requests in a rolling time window.
+	// Best for: Accurate rate limiting, no boundary bursts
+	SlidingWindow AlgorithmType = "sliding_window"
+
+	// LeakyBucket enforces a strict constant rate.
+	// Best for: Traffic shaping, smooth rate enforcement
+	LeakyBucket AlgorithmType = "leaky_bucket"
+)
+
+// String returns the string representation of the algorithm type.
+func (a AlgorithmType) String() string {
+	return string(a)
+}
+
+// Validate checks if the algorithm type is valid.
+func (a AlgorithmType) Validate() error {
+	switch a {
+	case TokenBucket, FixedWindow, SlidingWindow, LeakyBucket:
+		return nil
+	default:
+		return &ConfigError{
+			Field:  "algorithm",
+			Value:  a,
+			Reason: "must be one of: token_bucket, fixed_window, sliding_window, leaky_bucket",
+		}
+	}
 }
